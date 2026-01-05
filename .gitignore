@@ -1,0 +1,4 @@
+./patches/*
+./rendered_configs/*
+./talos_base_config/*
+./secrets/secrets.yaml

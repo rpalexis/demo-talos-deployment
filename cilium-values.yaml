@@ -1,0 +1,84 @@
+# routingMode: native
+#ipv4NativeRoutingCIDR: <YOUR_CLUSTER_CIDR>
+
+
+podAnnotations:
+  container.apparmor.security.beta.kubernetes.io/cilium-agent: unconfined
+  container.apparmor.security.beta.kubernetes.io/clean-cilium-state: unconfined
+  container.apparmor.security.beta.kubernetes.io/mount-cgroup: unconfined
+  container.apparmor.security.beta.kubernetes.io/apply-sysctl-overwrites: unconfined
+
+operator:
+  replicas: 1
+
+ipv4:
+  enabled: true
+
+ipv6:
+  enabled: false
+
+ipam:
+  mode: kubernetes
+
+# Leave empty so Cilium discovers the Kubernetes service endpoint automatically
+k8sServiceHost: "localhost"
+k8sServicePort: 7445
+
+# autoDirectNodeRoutes: true
+kubeProxyReplacement: true
+
+bpf:
+  monitorAggregation: none
+
+hubble:
+  enabled: true
+  ui:
+    enabled: true
+  relay:
+    enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - port-distribution
+      - flow
+      - icmp
+      - http
+
+cni:
+  uninstall: false
+
+
+ingressController:
+  enabled: true
+  default: true
+  service:
+    type: LoadBalancer
+    annotations:
+      io.cilium/lb-ipam-ips: "192.168.215.5"
+
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# helm upgrade cilium cilium/cilium -n kube-system --reuse-values   --set l2announcements.enabled=true
+l2announcements:
+  enabled: true
+
