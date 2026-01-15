@@ -1,4 +1,12 @@
-./patches/*
-./rendered_configs/*
-./talos_base_config/*
-./secrets/secrets.yaml
+# Exclude secrets but keep directory structure
+/secrets/*
+!/secrets/.gitkeep
+
+# Exclude generated configs but keep directory structure
+/rendered_configs/*
+!/rendered_configs/.gitkeep
+/talos_base_config/*
+!/talos_base_config/.gitkeep
+
+# Ignore OS files
+.DS_Store

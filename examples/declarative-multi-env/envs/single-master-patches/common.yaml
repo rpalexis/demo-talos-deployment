@@ -1,0 +1,12 @@
+cluster:
+  proxy:
+    disabled: true
+  network:
+    cni:
+      name: none
+machine:
+  registries:
+    config:
+      "192.168.25.20:5000":
+        tls:
+          insecureSkipVerify: true

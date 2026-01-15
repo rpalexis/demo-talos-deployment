@@ -1,124 +1,135 @@
+# Talos Linux GitOps-like Deployment
+
+This project provides a modular, declarative way to manage Talos Linux clusters using a patch-based configuration engine. It separates core configuration logic from environment-specific data (IPs, hostnames, etc.), providing a streamlined rendering and deployment workflow regardless of where your nodes are running.
+
+## Project Structure
+
+```text
+.
+├── render.sh                 # Main rendering engine
+├── patches/                  # Your active configuration (version controlled)
+│   └── envs/
+│       └── <env_name>/
+│           ├── cluster.env   # Environment variables
+│           ├── common.yaml   # Shared environmental patches
+│           ├── cluster-addons/# Optional CNI/Addon configurations
+│           │   └── cilium-values.yaml
+│           ├── control_planes/
+│           └── workers/
+├── examples/                 # Blueprints for different layouts
+├── talos_base_config/        # Generated client configs (ignored)
+├── rendered_configs/         # Final rendered node configs (ignored)
+└── secrets/                  # Cluster secrets (ignored)
+```
+
 ## Prerequisites
 
-Before running the scripts, ensure your local environment and hypervisor are prepared:
+Before running the scripts, ensure your local environment is prepared:
 
-### 1. Required Tooling
-* **[talosctl](https://www.talos.dev/latest/introduction/getting-started/#install-talosctl)**: The official CLI tool to interact with the Talos API.
-* **virsh / libvirt**: The standard toolkit for managing KVM virtual machines.
-* **kubectl**: The Kubernetes CLI to manage your cluster once it is operational.
-* **helm-cli**: To deploy helm charts in the cluster. Here cilium
+1. **Required Tooling**: `talosctl`, `kubectl`, `helm`.
+2. **Infrastructure**: Your nodes (VMs, bare-metal, etc.) must be running and accessible via network.
+3. **Networking**: Static IPs assigned outside your DHCP range.
 
-### 2. KVM / Hypervisor Setup
-* **Network Bridge**: A working Linux bridge (e.g., `virbr0`) that allows the VMs to communicate with each other and the gateway.
-* **Talos ISO Image**: Download the `metal-amd64.iso` from the [Talos Releases](https://github.com/siderolabs/talos/releases).
-* **Hardware Resources**:
-    * **Control Plane Nodes**: Minimum 2 vCPUs and 2GB RAM.
-    * **Worker Nodes**: Minimum 2 vCPUs and 2GB RAM.
+### Platform Specific Guides
+For instructions on how to prepare your nodes on specific platforms, see:
+- [KVM / Libvirt Guide](./docs/hypervisor-guides/kvm-guide.md)
 
-### 3. Networking Requirements
-* **Static IPs**: Ensure the IPs you assign in your `patches/` are outside your DHCP range to avoid conflicts.
-* **Gateway**: Your patches must point to the correct Gateway IP of your KVM bridge (typically the `.1` address of the subnet).
+## Documentation
+For more in-depth information about the architecture and project history:
+- [Architecture Analysis](./docs/analysis.md)
+- [Legacy README (v1)](./docs/README-V1.md)
 
 ---
 
-### A Note on "Metal" Mode
-Even though we are running inside Virtual Machines, this project uses the **Metal** platform logic. This allows us to manually define the disk layout and network configuration exactly as if we were installing on physical hardware, providing the most "genuine" DevOps learning experience.
+## Workflow
 
-
-
-### HOW to build on patches
-
-```shell
-# Create the secrets.yaml for the cluster
+### 1. Initialize Secrets
+```bash
 talosctl gen secrets -o ./secrets/secrets.yaml
+```
 
-# Copy one of examples as follow
-cp -r examples/EXAMPLE/* ./patches/
+### 2. Setup Configuration
+Copy an example layout to your patches directory:
+```bash
+# Example: Declarative Multi-Env
+cp -r examples/declarative-multi-env/* ./patches/
+```
 
-# Then generate the final configs from the patches
-./render.sh
+### 3. Render Configurations
+Generate the final Talos configs and the deployment helper:
+```bash
+./render.sh <env_name>  # e.g., ./render.sh prod
+```
 
-# Then follow the notes on the chosen notes
-### See sections below
+### 4. Deploy
+Apply the configurations using the generated script:
+```bash
+./rendered_configs/<env_name>/apply.sh
+```
 
-# After generating the Kubeconfig you need to install cilium.
+### 5. Bootstrap
+Once the nodes are up, run the bootstrap command printed by `render.sh`:
+```bash
+talosctl bootstrap --nodes <CP_IP>
+```
+
+---
+
+## Architecture Logic
+
+```text
++---------------------+
+|   render.sh (Engine)| <-----------------+
++---------------------+                   |
+          |                               |
+          v                               |
++---------------------------------+  +----------------------+
+| patches/ (Source of Truth)      |  | secrets/ secrets.yaml|
+| |_ envs/                        |  +----------------------+
+|    |_ <env>/                    |           |
+|       |_ cluster.env (Identity) |<----------+
+|       |_ common.yaml (Shared)   |
+|       |_ cluster-addons/        |
+|          |_ cilium-values.yaml  |
+|       |_ control_planes/        |
+|       |_ workers/               |
++---------------------------------+
+          |
+          v
++---------------------------------+
+| rendered_configs/ (Artifacts)   |
+| |_ <env>/                       |
+|    |_ apply.sh (Automated)      |
+|    |_ controlplane-cp1.yaml     |
+|    |_ worker-worker1.yaml       |
++---------------------------------+
+```
+
+---
+
+## Post-Installation
+
+### 1. Identify your CNI Solution
+While this project provides a default configuration for **Cilium**, the architecture is CNI-agnostic. You can deploy any CNI (Flannel, Calico, etc.) by providing your own values files.
+
+### 2. Install Cilium (Default Recommendation)
+The default `cilium-values.yaml` included in the examples makes several high-performance architectural choices:
+- **Kube-Proxy Replacement**: For better performance and simpler Talos networking.
+- **L2 Announcements**: Enables BGP-less LoadBalancer IP management in physical/KVM environments.
+- **Built-in Ingress**: Activates the Cilium Ingress Controller by default.
+
+To install using the environment-specific values:
+
+```bash
 helm repo add cilium https://helm.cilium.io/
-
 helm repo update
-
-helm upgrade --install cilium cilium/cilium   --namespace kube-system -f cilium-values.yaml
-## Remember for this demo kube-proxy has been disabled
-
+helm upgrade --install cilium cilium/cilium \
+  --namespace kube-system \
+  -f patches/envs/<env_name>/cluster-addons/cilium-values.yaml
 ```
 
+## Tips
 
-## Example :  Single Node configuration
-
-```
-# Then set the nodes variables (this is because KVM was used | check how to do it with you hypervisor)
-export CP_IP=$(virsh domifaddr  NAME_OF_CONTROL_PLANE_NODE | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-export NODE_IP=$(virsh domifaddr NAME_OF_WORKER_NODE | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-
-# Set the TALOSCONFIG file
-export TALOSCONFIG=./talos_base_config/talosconfig
-
-# Set the endpoints and node
-talosctl config endpoint $CP_IP
-talosctl config node $NODE_IP
-
-# Apply the configs on the nodes
-talosctl apply-config --insecure --nodes $CP_IP --file rendered_configs/controlplane--FILE.yaml
-talosctl apply-config --insecure --nodes $NODE_IP --file rendered_configs/worker--FILE.yaml
-
-
-# Your nodes may restart |  Wait a bit then || If not do
-talosctl bootstrap --nodes $CP_IP
-
-
-# Wait a bit again a get the kubeconfig files
-
-talosctl kubeconfig -n $CP_IP ./talos_base_config/kubeconfig.yaml
-```
-
-
-## Example :  HA Cluster configuration
-
-
-### Tips for this demo
-
-- **Maintenance Mode:** If `talosctl` fails to apply, check the KVM console. Talos might be in 'Maintenance Mode' waiting for a valid configuration.
-- **The Bootstrap Rule:** Even in the HA example, notice we only run `bootstrap` on **one** node (`CP_IP_1`). Never run it on all three.
-- **No SSH:** Remember, you cannot SSH into these nodes. Use `talosctl dashboard -n <IP>` to see what is happening inside the engine.
-
-```
-# Then set the nodes variables (here KVM was used 
-# | check how to do it with you hypervisor 
-# | or just use your Host IP if physical nodes are used)
-# NB: In KVM, you may have to wait before IPs can be available.
-export CP_IP_1=$(virsh domifaddr  NAME_OF_CONTROL_PLANE_NODE_1 | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-export CP_IP_2=$(virsh domifaddr  NAME_OF_CONTROL_PLANE_NODE_2 | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-export CP_IP_3=$(virsh domifaddr  NAME_OF_CONTROL_PLANE_NODE_3 | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-export NODE_IP_1=$(virsh domifaddr NAME_OF_WORKER_NODE_1 | egrep '/' | awk '{print $4}' | cut -d/ -f1)
-
-# Set the TALOSCONFIG file
-export TALOSCONFIG=./talos_base_config/talosconfig
-
-# Set the endpoints and node
-talosctl config endpoint $CP_IP_1 CP_IP_2 CP_IP_3
-talosctl config node $NODE_IP_1 # if more than one worker node NODE_IP_2 NODE_IP_x NODE_IP_y
-
-# Apply the configs on the nodes
-talosctl apply-config --insecure --nodes $CP_IP_1 --file rendered_configs/controlplane1.yaml
-talosctl apply-config --insecure --nodes $CP_IP_2 --file rendered_configs/controlplane2.yaml
-talosctl apply-config --insecure --nodes $CP_IP_3 --file rendered_configs/controlplane3.yaml
-talosctl apply-config --insecure --nodes $NODE_IP_1 --file rendered_configs/worker1.yaml
-
-
-# Your nodes may restart |  Wait a bit then || If not do
-talosctl bootstrap --nodes $CP_IP_1
-
-
-# Wait a bit again a get the kubeconfig files
-
-talosctl kubeconfig -n $CP_IP_1 ./talos_base_config/kubeconfig.yaml
-```
+- **Clean**: Use `./render.sh clean <env_name>` to remove sensitive rendered files when done.
+- **No SSH**: Use `talosctl dashboard -n <IP>` to monitor nodes.
+- **Bootstrap Rule**: Only run `bootstrap` on **one** control plane node.

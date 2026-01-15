@@ -3,8 +3,8 @@ machine:
     interfaces:
       - interface: enp1s0
         addresses:
-          - 192.168.215.47/24
+          - 192.168.215.80/24
         routes:
           - network: 0.0.0.0/0
             gateway: 192.168.215.1
-    hostname: demo-talos-ctrlplane2
+    hostname: demo-talos-worker1
