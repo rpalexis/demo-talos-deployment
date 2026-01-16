@@ -7,7 +7,6 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: 192.168.215.1
-    hostname: demo-talos-ctrlplane1
 ---
 apiVersion: v1alpha1
 kind: HostnameConfig
