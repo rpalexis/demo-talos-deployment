@@ -43,9 +43,32 @@ mkdir -p "${BASE_DIR}"
 
 echo "[INFO] Rendering Environment: ${ENV}"
 
+# Secrets Decryption Logic (SOPS)
+SECRETS_FILE="${SECRETS_DIR}/secrets.yaml"
+TRAP_FILES=()
+
+if [[ -f "${SECRETS_FILE}" ]] && grep -q "sops:" "${SECRETS_FILE}"; then
+  echo "[INFO] Encrypted secrets detected. Decrypting with SOPS..."
+  if ! command -v sops &> /dev/null; then
+    echo "[ERROR] 'sops' not found. Please install it to decrypt secrets."
+    exit 1
+  fi
+  DEC_SECRETS_FILE="${SECRETS_FILE}.dec"
+  sops -d "${SECRETS_FILE}" > "${DEC_SECRETS_FILE}"
+  SECRETS_FILE="${DEC_SECRETS_FILE}"
+  TRAP_FILES+=("${DEC_SECRETS_FILE}")
+fi
+
+cleanup() {
+  for f in "${TRAP_FILES[@]}"; do
+    [[ -f "$f" ]] && rm -f "$f"
+  done
+}
+trap cleanup EXIT ERR
+
 # Generate talosconfig (client config) once per render
 talosctl gen config "${CLUSTER_NAME}" "${CLUSTER_ENDPOINT}" \
-  --with-secrets "${SECRETS_DIR}/secrets.yaml" \
+  --with-secrets "${SECRETS_FILE}" \
   --talos-version "${TALOS_VERSION}" \
   --kubernetes-version "${KUBERNETES_VERSION}" \
   --output-types talosconfig \
@@ -80,7 +103,7 @@ render_node() {
   done
 
   talosctl gen config "${CLUSTER_NAME}" "${CLUSTER_ENDPOINT}" \
-    --with-secrets "${SECRETS_DIR}/secrets.yaml" \
+    --with-secrets "${SECRETS_FILE}" \
     --talos-version "${TALOS_VERSION}" \
     --kubernetes-version "${KUBERNETES_VERSION}" \
     "${PATCH_ARGS[@]}" \

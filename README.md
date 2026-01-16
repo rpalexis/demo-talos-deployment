@@ -26,7 +26,9 @@ This project provides a modular, declarative way to manage Talos Linux clusters 
 
 Before running the scripts, ensure your local environment is prepared:
 
-1. **Required Tooling**: `talosctl`, `kubectl`, `helm`.
+1. **Required Tooling**: `talosctl`, `kubectl`, `helm`, `sops`, `age`.
+   - **Install age**: `sudo apt install age` (Ubuntu/Debian) or `brew install age` (macOS).
+   - **Install sops**: Download the binary from [SOPS Releases](https://github.com/getsops/sops/releases).
 2. **Infrastructure**: Your nodes (VMs, bare-metal, etc.) must be running and accessible via network.
 3. **Networking**: Static IPs assigned outside your DHCP range.
 
@@ -37,6 +39,7 @@ For instructions on how to prepare your nodes on specific platforms, see:
 ## Documentation
 For more in-depth information about the architecture and project history:
 - [Architecture Analysis](./docs/analysis.md)
+- [Secrets Management (SOPS + AGE)](./docs/secrets-guide.md)
 - [Legacy README (v1)](./docs/README-V1.md)
 
 ---
