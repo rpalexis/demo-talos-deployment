@@ -8,3 +8,8 @@ machine:
           - network: 0.0.0.0/0
             gateway: 192.168.215.1
     hostname: demo-talos-worker1
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+auto: off
+hostname: demo-talos-worker1

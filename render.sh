@@ -25,9 +25,11 @@ SECRETS_DIR="${ROOT_DIR}/secrets"
 OUT_DIR="${ROOT_DIR}/rendered_configs/${ENV}"
 APPLY_SCRIPT="${OUT_DIR}/apply.sh"
 
-# Global variables for apply-config commands
+# Global variables for tracking
 APPLY_CMDS=()
 BOOTSTRAP_CMD=""
+CP_IPS=()
+ALL_IPS=()
 
 # Load environment-specific variables
 if [[ ! -f "${PATCH_DIR}/cluster.env" ]]; then
@@ -92,10 +94,14 @@ render_node() {
   local CONFIG_FILE="${OUT_DIR}/${ROLE}-${NODE_NAME}.yaml"
   
   APPLY_CMDS+=("talosctl apply-config --insecure --nodes ${TARGET_IP} --file ${CONFIG_FILE}")
+  ALL_IPS+=("${TARGET_IP}")
   
-  # Track the first control plane for bootstrap
-  if [[ "${ROLE}" == "controlplane" && -z "${BOOTSTRAP_CMD}" ]]; then
-    BOOTSTRAP_CMD="talosctl bootstrap --nodes ${TARGET_IP}"
+  # Track control planes for endpoints and bootstrap
+  if [[ "${ROLE}" == "controlplane" ]]; then
+    CP_IPS+=("${TARGET_IP}")
+    if [[ -z "${BOOTSTRAP_CMD}" ]]; then
+      BOOTSTRAP_CMD="talosctl bootstrap --nodes ${TARGET_IP}"
+    fi
   fi
 }
 
@@ -123,6 +129,11 @@ cat <<EOF > "${APPLY_SCRIPT}"
 # Generated for environment: ${ENV}
 export TALOSCONFIG="${BASE_DIR}/talosconfig"
 
+echo "[INFO] Configuring talosctl..."
+talosctl config endpoint $(printf "%s " "${CP_IPS[@]}")
+talosctl config node $(printf "%s " "${ALL_IPS[@]}")
+
+echo ""
 echo "[INFO] Applying configurations..."
 $(printf "%s\n" "${APPLY_CMDS[@]}")
 
